@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getAppOctokit, GitHubConfigError } from "@/lib/github/appAuth";
 import { saveConnection } from "@/lib/github/connections";
 import { InvalidStateError, verifyState } from "@/lib/github/state";
+import { trackEvent } from "@/lib/analytics/trackEvent";
+import { LOCAL_DEV_USER_ID } from "@/lib/identity";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -35,6 +37,12 @@ export async function GET(request: Request) {
       githubLogin: login ?? "unknown",
       installationId,
       installationAccountType: accountType ?? null,
+    });
+    trackEvent("github_connected", {
+      userId: LOCAL_DEV_USER_ID,
+      orgId: null,
+      projectId,
+      installationAccountType: accountType === "Organization" ? "organization" : "personal",
     });
 
     return NextResponse.redirect(new URL(`/workspaces?project=${encodeURIComponent(projectId)}&github=connected`, request.url));

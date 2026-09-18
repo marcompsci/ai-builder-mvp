@@ -5,6 +5,12 @@ import { emit, getRun, updateRun } from "./runStore";
 import { extractPlanFromText } from "./planSchema";
 import { runValidation } from "./validate";
 import type { Provider } from "./types";
+import { trackEvent } from "../../analytics/trackEvent";
+import { LOCAL_DEV_USER_ID } from "../../identity";
+
+function secondsSince(iso: string): number {
+  return (Date.now() - new Date(iso).getTime()) / 1000;
+}
 
 /**
  * The shared "one provider-neutral agent-run system" pipeline. Every
@@ -23,12 +29,35 @@ export async function runPlanPipeline(
   emit(runId, "run_started", { phase: "plan" });
   emit(runId, "context_loaded", { workspaceRoot });
 
+  const run = getRun(runId);
+  const trackFailed = (errorCategory: "invalid_plan" | "provider_error") =>
+    run &&
+    trackEvent("agent_run_failed", {
+      userId: LOCAL_DEV_USER_ID,
+      orgId: null,
+      projectId: run.projectId,
+      agentRunId: runId,
+      provider: run.provider,
+      durationSeconds: secondsSince(run.createdAt),
+      errorCategory,
+    });
+
   try {
     const { text, cancelled } = await performPlan();
 
     if (cancelled) {
       updateRun(runId, { phase: "cancelled" });
       emit(runId, "run_cancelled", { at: "plan" });
+      if (run) {
+        trackEvent("agent_run_cancelled", {
+          userId: LOCAL_DEV_USER_ID,
+          orgId: null,
+          projectId: run.projectId,
+          agentRunId: runId,
+          provider: run.provider,
+          phase: "plan",
+        });
+      }
       return;
     }
 
@@ -39,6 +68,7 @@ export async function runPlanPipeline(
         error: "The agent did not return a valid plan. Try rephrasing the request.",
       });
       emit(runId, "run_failed", { reason: "invalid_plan", rawText: text.slice(0, 2000) });
+      trackFailed("invalid_plan");
       return;
     }
 
@@ -48,6 +78,7 @@ export async function runPlanPipeline(
   } catch (err) {
     updateRun(runId, { phase: "failed", error: err instanceof Error ? err.message : "Plan generation failed." });
     emit(runId, "run_failed", { reason: "plan_error" });
+    trackFailed("provider_error");
   }
 }
 
@@ -61,6 +92,18 @@ export async function runApplyPipeline(
   if (!run || !run.plan) return;
 
   emit(runId, "run_started", { phase: "apply" });
+  const startedAt = new Date().toISOString();
+
+  const trackFailed = (errorCategory: "install_failed" | "validation_failed" | "provider_error") =>
+    trackEvent("agent_run_failed", {
+      userId: LOCAL_DEV_USER_ID,
+      orgId: null,
+      projectId: run.projectId,
+      agentRunId: runId,
+      provider: agent,
+      durationSeconds: secondsSince(startedAt),
+      errorCategory,
+    });
 
   const checkpointSha = await checkpointCommit(workspaceRoot, `before run ${runId}`);
   updateRun(runId, { phase: "applying", checkpointSha });
@@ -74,6 +117,7 @@ export async function runApplyPipeline(
     await restoreToCommit(workspaceRoot, checkpointSha);
     updateRun(runId, { phase: "failed", error: err instanceof Error ? err.message : "Edit run failed." });
     emit(runId, "run_failed", { reason: "apply_error" });
+    trackFailed("provider_error");
     return;
   }
 
@@ -81,6 +125,14 @@ export async function runApplyPipeline(
     await restoreToCommit(workspaceRoot, checkpointSha);
     updateRun(runId, { phase: "cancelled" });
     emit(runId, "run_cancelled", { at: "apply", rolledBackTo: checkpointSha });
+    trackEvent("agent_run_cancelled", {
+      userId: LOCAL_DEV_USER_ID,
+      orgId: null,
+      projectId: run.projectId,
+      agentRunId: runId,
+      provider: agent,
+      phase: "apply",
+    });
     return;
   }
 
@@ -100,19 +152,35 @@ export async function runApplyPipeline(
       error: err instanceof Error ? `Could not install dependencies: ${err.message}` : "Could not install dependencies.",
     });
     emit(runId, "run_failed", { reason: "install_failed" });
+    trackFailed("install_failed");
     return;
   }
 
+  const validationStartedAt = new Date().toISOString();
   const validation = await runValidation(workspaceRoot);
   updateRun(runId, { validation });
   emit(runId, "validation_completed", { results: validation });
 
   const allPassed = validation.every((v) => v.passed);
+  const validationEvent = {
+    userId: LOCAL_DEV_USER_ID,
+    orgId: null,
+    projectId: run.projectId,
+    agentRunId: runId,
+    provider: agent,
+    durationSeconds: secondsSince(validationStartedAt),
+  };
   if (!allPassed) {
     updateRun(runId, { phase: "failed", error: "Validation failed." });
     emit(runId, "run_failed", { reason: "validation_failed" });
+    trackEvent("validation_failed", {
+      ...validationEvent,
+      failedCommands: validation.filter((v) => !v.passed).map((v) => v.label as "lint" | "typecheck" | "build"),
+    });
+    trackFailed("validation_failed");
     return;
   }
+  trackEvent("validation_passed", validationEvent);
 
   const commitSha = await commitAll(workspaceRoot, run.plan.intendedResult.slice(0, 72), {
     kind: "edit",
@@ -124,4 +192,14 @@ export async function runApplyPipeline(
   });
   updateRun(runId, { phase: "complete", commitSha });
   emit(runId, "run_completed", { commitSha });
+  trackEvent("agent_run_completed", {
+    userId: LOCAL_DEV_USER_ID,
+    orgId: null,
+    projectId: run.projectId,
+    agentRunId: runId,
+    provider: agent,
+    durationSeconds: secondsSince(startedAt),
+    validationResult: "passed",
+    filesChangedCount: diffs.length,
+  });
 }

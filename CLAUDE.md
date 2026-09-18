@@ -31,6 +31,10 @@ then the doc that matches what you're touching:
   execute, one-time-use by construction). Read before touching
   `src/mcp/github/`, `src/lib/github/{approvals,execute,repoSelection}.ts`,
   or the GitHub Actions panel.
+- `docs/analytics.md` - product analytics (Phase 7A): the event taxonomy,
+  how it's structurally separate from `mcp_audit_log`, and the privacy
+  boundaries. Read before adding a new event, touching `src/lib/analytics/`,
+  or wiring a new `trackEvent()` call site.
 - `docs/runbook.md` - local setup, required env vars, and what breaks
   (with the actual error you'll see) when a credential or dependency is
   missing.
@@ -71,6 +75,15 @@ then the doc that matches what you're touching:
   anywhere else, never let a route or prompt accept an MCP server
   URL/command/repository/installation-id as input, and never give a coding
   agent a third MCP server without a new, explicit design and approval.
+- Never add a new field to any event's `EVENT_PROPERTY_SCHEMAS` entry
+  (`src/lib/analytics/schema.ts`) that could carry a prompt, source or
+  generated file content, a token, or an env value - `trackEvent()`'s
+  allowlist enforcement only works because the schema itself never
+  declares such a field. Product analytics (`product_events`/`feedback`)
+  and the security audit log (`mcp_audit_log`) are separate tables on
+  purpose (`docs/analytics.md`) - never write to one from code that's
+  conceptually the other, and never let an opt-out/deletion flow touch
+  `mcp_audit_log`.
 - Every file under `src/mcp/projectFiles/` and `src/mcp/github/` uses
   relative imports, not the `@/` alias - this is required, not stylistic.
   See "Why two files" in `docs/project-files-mcp.md`: `tsx` (which runs

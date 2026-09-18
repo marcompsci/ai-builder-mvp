@@ -151,6 +151,12 @@ A local SQLite file at `data/app.db` (via `better-sqlite3`) holds `github_connec
 - Project Files MCP's Codex integration is structurally verified (interface conformance, sandbox-config assertions, the full protocol layer via an in-memory MCP client) but has not been exercised against a real Codex run in this environment (no `OPENAI_API_KEY` available while building it) — unlike the Claude Code path, which was live-tested end to end and caught two real bugs along the way (see `docs/project-files-mcp.md`).
 - GitHub MCP is structurally tested (real MCP protocol layer, real approval state machine, real SQLite schema including the `github_approvals` foreign key) but has not been exercised against a real GitHub repository or a real coding-agent run in this environment (no `GITHUB_APP_ID`/`GITHUB_APP_PRIVATE_KEY` configured while building it) — same honest caveat as Codex above. Tests mock Octokit at the `getInstallationOctokit()` boundary. See `docs/github-mcp.md`.
 - A pending GitHub approval expires 15 minutes after being proposed, with no proactive reminder — it just shows as `expired` next time the panel loads.
+- No automatic retention/expiry job for product analytics yet — `product_events`/`feedback` rows persist until a user explicitly deletes them via `/privacy`. See `docs/analytics.md`.
+- The `/admin` dashboard and `/api/admin/**` routes have no dedicated admin authentication yet (that's Phase 6 scope) — same single-trusted-operator assumption the rest of the app already has, not a new gap.
+
+## Product analytics (Phase 7A)
+
+A small set of privacy-conscious events (project creation, agent runs, plan approval, validation, preview, GitHub export, MCP allow/deny, feedback) are recorded to a local `product_events` table via `src/lib/analytics/trackEvent.ts` — an explicit per-event property allowlist (never a prompt, source/generated content, a token, or an env value), non-blocking on failure, and structurally separate from the `mcp_audit_log` security trail. An internal `/admin` dashboard shows the activation funnel, a feedback inbox, and recurring failure themes; `/privacy` explains what's collected and lets a user opt out or delete their analytics data. Full reference: `docs/analytics.md`.
 
 ## Testing
 
@@ -172,6 +178,9 @@ npm test
 - `tests/mcp/githubMcp.test.ts` — GitHub MCP through the real MCP protocol layer: no tool exposes a repo/owner parameter, read tools return correctly-shaped data (Octokit mocked at the `getInstallationOctokit()` boundary), propose tools only ever create a pending approval and never call GitHub, every propose call is written to the shared audit log with `approval_id` populated, errors never leak the underlying message, and the rate limit denies calls past its cap.
 - `tests/github/approvals.test.ts` — the approval state machine: `hashPayload` determinism, project-scoped lookups, `pending → approved/rejected` and `approved → executed` transitions, the anti-replay guarantee (a second `markExecuted` call always throws), and TTL expiry flipping a stale pending row to `expired` on read.
 - `tests/github/execute.test.ts` — `execute.ts`'s two hard guards: refusing a direct push to the default branch (without touching git or GitHub at all), and refusing to execute when the project's current repo selection no longer matches the approval's repo — plus a full successful execute-and-record-result path.
+- `tests/analytics/schema.test.ts` — every event has a schema requiring `userId` and accepting a null `orgId`, and no event's declared shape can carry a prompt/source-code/token/env-value-shaped field.
+- `tests/analytics/trackEvent.test.ts` — the allowlist strips anything undeclared, opted-out users get no row written, a database failure never throws out of `trackEvent()`, and a malformed enum value is dropped rather than crashing.
+- `tests/analytics/rateLimit.test.ts`, `tests/analytics/feedback.test.ts` — the per-key rate limiter, and feedback CSV export/CSV-escaping/"top problems" never leaking raw free text.
 
 None of the above require an API key. Exercising a real model call (landing-page generation, or either coding agent) or a real GitHub API call requires the corresponding key/App credentials and isn't part of the automated suite — see `docs/runbook.md`.
 

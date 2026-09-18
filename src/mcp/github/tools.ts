@@ -5,6 +5,7 @@ import { APPROVAL_ACTION_TYPES, createApproval } from "../../lib/github/approval
 import { recordAuditEntry } from "./auditLog";
 import { checkRateLimit, RateLimitError } from "./rateLimit";
 import type { TrustedGitHubServerContext } from "./config";
+import { trackEvent } from "../../lib/analytics/trackEvent";
 
 function textResult(payload: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(payload) }] };
@@ -12,6 +13,18 @@ function textResult(payload: unknown) {
 
 function deniedResult(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
+}
+
+function trackMcpEvent(ctx: TrustedGitHubServerContext, toolName: string, decision: "allow" | "deny") {
+  trackEvent(decision === "allow" ? "mcp_tool_allowed" : "mcp_tool_denied", {
+    userId: ctx.userId,
+    orgId: null,
+    projectId: ctx.projectId,
+    agentRunId: ctx.runId,
+    provider: ctx.provider,
+    mcpServer: "github",
+    toolName,
+  });
 }
 
 async function guarded(
@@ -24,16 +37,19 @@ async function guarded(
     checkRateLimit();
   } catch (err) {
     recordAuditEntry(ctx, { toolName, decision: "deny", reason: "rate_limited", ...extra });
+    trackMcpEvent(ctx, toolName, "deny");
     return deniedResult(err instanceof RateLimitError ? err.message : "Rate limit exceeded.");
   }
 
   try {
     const { result, reason, githubResultRef, approvalId } = await fn();
     recordAuditEntry(ctx, { toolName, decision: "allow", reason, githubResultRef, approvalId, ...extra });
+    trackMcpEvent(ctx, toolName, "allow");
     return result;
   } catch (err) {
     const reason = err instanceof Error ? err.name : "error";
     recordAuditEntry(ctx, { toolName, decision: "deny", reason, ...extra });
+    trackMcpEvent(ctx, toolName, "deny");
     // Generic, never the underlying error's message/stack - same discipline as Project Files MCP.
     return deniedResult("That GitHub request could not be completed.");
   }

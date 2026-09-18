@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { getProjectRoot } from "./paths";
+import { trackEvent } from "../analytics/trackEvent";
+import { LOCAL_DEV_USER_ID } from "../identity";
 
 export type PreviewStatus = "installing" | "starting" | "ready" | "error";
 
@@ -74,6 +76,7 @@ async function waitUntilResponding(port: number, timeoutMs = 45000): Promise<voi
 }
 
 async function runPreviewLifecycle(id: string, projectRoot: string, state: InternalPreviewState) {
+  const requestedAt = Date.now();
   try {
     const nodeModulesPath = path.join(projectRoot, "node_modules");
     const hasNodeModules = await fs
@@ -103,6 +106,12 @@ async function runPreviewLifecycle(id: string, projectRoot: string, state: Inter
 
     state.status = "ready";
     state.url = `http://localhost:${port}`;
+    trackEvent("preview_started", {
+      userId: LOCAL_DEV_USER_ID,
+      orgId: null,
+      projectId: id,
+      durationToStartSeconds: (Date.now() - requestedAt) / 1000,
+    });
   } catch (err) {
     state.status = "error";
     state.error = err instanceof Error ? err.message : "Failed to start the preview server.";

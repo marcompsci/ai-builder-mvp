@@ -4,6 +4,10 @@ import { agentErrorResponse, assertProjectExists, loadOwnedRun } from "@/lib/wor
 
 const CANCELLABLE_PHASES = new Set(["planning", "applying", "validating"]);
 
+// agent_run_cancelled fires from pipeline.ts, not here - this route only
+// requests cancellation; the pipeline is where it's actually confirmed
+// (rolled back to checkpoint), which is the more authoritative moment and
+// avoids double-counting the same cancellation in the funnel.
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string; runId: string }> }) {
   const { id, runId } = await params;
   try {

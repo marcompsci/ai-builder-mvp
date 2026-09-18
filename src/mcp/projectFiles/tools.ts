@@ -20,6 +20,7 @@ import { recordAuditEntry } from "./auditLog";
 import { checkRateLimit, RateLimitError } from "./rateLimit";
 import { redactSecrets } from "./secretRedaction";
 import type { TrustedServerContext } from "./config";
+import { trackEvent } from "../../lib/analytics/trackEvent";
 
 function hash(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
@@ -39,6 +40,18 @@ function deniedResult(message: string) {
  * message - never a raw path, stack trace, or the underlying error's own
  * message (which could echo back attacker-supplied path text).
  */
+function trackMcpEvent(ctx: TrustedServerContext, toolName: string, decision: "allow" | "deny") {
+  trackEvent(decision === "allow" ? "mcp_tool_allowed" : "mcp_tool_denied", {
+    userId: ctx.userId,
+    orgId: null,
+    projectId: ctx.projectId,
+    agentRunId: ctx.runId,
+    provider: ctx.provider,
+    mcpServer: "project-files",
+    toolName,
+  });
+}
+
 async function guarded(
   ctx: TrustedServerContext,
   toolName: string,
@@ -49,6 +62,7 @@ async function guarded(
     checkRateLimit();
   } catch (err) {
     recordAuditEntry(ctx, { toolName, relativePath, decision: "deny", reason: "rate_limited" });
+    trackMcpEvent(ctx, toolName, "deny");
     return deniedResult(err instanceof RateLimitError ? err.message : "Rate limit exceeded.");
   }
 
@@ -62,10 +76,12 @@ async function guarded(
       contentHashBefore: hashBefore,
       contentHashAfter: hashAfter,
     });
+    trackMcpEvent(ctx, toolName, "allow");
     return result;
   } catch (err) {
     const reason = err instanceof Error ? err.name : "error";
     recordAuditEntry(ctx, { toolName, relativePath, decision: "deny", reason });
+    trackMcpEvent(ctx, toolName, "deny");
     // Deliberately generic - never surface err.message (could contain a
     // real filesystem path or other internal detail) or a stack trace.
     return deniedResult("That request could not be completed - the path, file type, or size was not allowed.");

@@ -5,6 +5,8 @@ import { getAdapter } from "@/lib/workspaces/agent/adapters/registry";
 import { isProviderAvailable } from "@/lib/workspaces/agent/availability";
 import { agentErrorResponse, assertProjectExists } from "@/lib/workspaces/agent/routeHelpers";
 import { createRun, PROVIDERS } from "@/lib/workspaces/agent/runStore";
+import { trackEvent } from "@/lib/analytics/trackEvent";
+import { LOCAL_DEV_USER_ID } from "@/lib/identity";
 
 const bodySchema = z.object({
   request: z.string().trim().min(1, "Describe the change you want.").max(2000),
@@ -36,6 +38,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const workspaceRoot = await assertProjectExists(id);
     const runId = randomUUID();
     const run = createRun(runId, id, parsed.data.request, parsed.data.provider);
+    trackEvent("agent_selected", { userId: LOCAL_DEV_USER_ID, orgId: null, projectId: id, provider: parsed.data.provider });
+    trackEvent("agent_run_started", {
+      userId: LOCAL_DEV_USER_ID,
+      orgId: null,
+      projectId: id,
+      agentRunId: runId,
+      provider: parsed.data.provider,
+      runType: "plan",
+    });
     const adapter = getAdapter(parsed.data.provider);
     void adapter.createPlan({ runId, projectId: id, workspaceRoot, request: parsed.data.request });
     return NextResponse.json({ run }, { status: 201 });

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentEvent } from "@/lib/workspaces/agent/events";
 import type { AgentRun, Provider } from "@/lib/workspaces/agent/runStore";
+import { trackClientEvent } from "@/lib/analytics/clientTrack";
+import { PostRunFeedback } from "@/components/feedback/PostRunFeedback";
 import { ActivityLog } from "./ActivityLog";
 import { AgentSelector } from "./AgentSelector";
 import { DiffViewer } from "./DiffViewer";
@@ -27,6 +29,8 @@ export function AgentRunPanel({ projectId }: { projectId: string }) {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const trackedPlanViewRef = useRef<string | null>(null);
+  const trackedDiffViewRef = useRef<string | null>(null);
 
   function stopStream() {
     eventSourceRef.current?.close();
@@ -117,8 +121,29 @@ export function AgentRunPanel({ projectId }: { projectId: string }) {
     setRequest("");
   }
 
+  function discardPlan() {
+    if (run) {
+      trackClientEvent("agent_plan_rejected", { projectId, agentRunId: run.id, provider: run.provider });
+    }
+    startNew();
+  }
+
   const canCancel = run && ["planning", "applying", "validating"].includes(run.phase);
   const isTerminal = run && ["complete", "failed", "cancelled"].includes(run.phase);
+
+  useEffect(() => {
+    if (run?.phase === "awaiting_approval" && run.plan && trackedPlanViewRef.current !== run.id) {
+      trackedPlanViewRef.current = run.id;
+      trackClientEvent("agent_plan_viewed", { projectId, agentRunId: run.id, provider: run.provider });
+    }
+  }, [run?.phase, run?.plan, run?.id, run?.provider, projectId]);
+
+  useEffect(() => {
+    if (run?.diffs && run.diffs.length > 0 && trackedDiffViewRef.current !== run.id) {
+      trackedDiffViewRef.current = run.id;
+      trackClientEvent("file_diff_viewed", { projectId, agentRunId: run.id, provider: run.provider, filesViewedCount: run.diffs.length });
+    }
+  }, [run?.diffs, run?.id, run?.provider, projectId]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -178,7 +203,7 @@ export function AgentRunPanel({ projectId }: { projectId: string }) {
           </div>
 
           {run.phase === "awaiting_approval" && run.plan && (
-            <PlanReview plan={run.plan} onApprove={approve} onDiscard={startNew} approving={busy} />
+            <PlanReview plan={run.plan} onApprove={approve} onDiscard={discardPlan} approving={busy} />
           )}
 
           {run.phase === "failed" && (
@@ -199,6 +224,9 @@ export function AgentRunPanel({ projectId }: { projectId: string }) {
 
           {run.validation && <ValidationResults results={run.validation} />}
           {run.diffs && <DiffViewer diffs={run.diffs} />}
+
+          {run.phase === "complete" && <PostRunFeedback projectId={projectId} runId={run.id} variant="success" />}
+          {run.phase === "failed" && <PostRunFeedback projectId={projectId} runId={run.id} variant="failure" />}
 
           <div>
             <h4 className="mb-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">Tool Activity</h4>

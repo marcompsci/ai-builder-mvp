@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PreviewState } from "@/lib/workspaces/preview";
+import { trackClientEvent } from "@/lib/analytics/clientTrack";
 
 type LocalStatus = PreviewState["status"] | "idle";
 
@@ -10,6 +11,7 @@ export function WorkspacePreviewPanel({ projectId }: { projectId: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const trackedViewRef = useRef(false);
 
   function stopPolling() {
     if (pollRef.current) {
@@ -63,6 +65,13 @@ export function WorkspacePreviewPanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     return stopPolling;
   }, []);
+
+  useEffect(() => {
+    if (status === "ready" && url && !trackedViewRef.current) {
+      trackedViewRef.current = true;
+      trackClientEvent("preview_viewed", { projectId });
+    }
+  }, [status, url, projectId]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

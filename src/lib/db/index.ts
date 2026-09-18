@@ -120,6 +120,65 @@ export function getDb(): Database.Database {
       ON github_approvals(project_id);
     CREATE INDEX IF NOT EXISTS idx_github_approvals_run_id
       ON github_approvals(agent_run_id);
+
+    -- Phase 7A: product analytics, deliberately a SEPARATE table from
+    -- mcp_audit_log - see docs/analytics.md "Security audit logs vs
+    -- product analytics". org_id is nullable (no real org model exists
+    -- yet; ready for one), user_id is required. properties_json only ever
+    -- holds fields that passed EVENT_PROPERTY_SCHEMAS[event_name] - never
+    -- raw prompts, file content, secrets, tokens, or env values.
+    CREATE TABLE IF NOT EXISTS product_events (
+      id TEXT PRIMARY KEY,
+      event_name TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      org_id TEXT,
+      project_id TEXT,
+      agent_run_id TEXT,
+      provider TEXT,
+      properties_json TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_product_events_user_id
+      ON product_events(user_id);
+    CREATE INDEX IF NOT EXISTS idx_product_events_project_id
+      ON product_events(project_id);
+    CREATE INDEX IF NOT EXISTS idx_product_events_event_name
+      ON product_events(event_name);
+
+    -- Phase 7A: structured post-run feedback. Separate from product_events
+    -- because it carries optional free text and has different access rules
+    -- (admin-only inbox, exportable) - a event_name='feedback_submitted'
+    -- row in product_events still exists for funnel counting, but never
+    -- carries the free text itself.
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      run_id TEXT,
+      project_id TEXT,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      rating INTEGER,
+      helped TEXT,
+      would_use_again TEXT,
+      wants_interview INTEGER,
+      blocked_reason TEXT,
+      free_text TEXT,
+      may_use_logs INTEGER,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_feedback_run_id
+      ON feedback(run_id);
+    CREATE INDEX IF NOT EXISTS idx_feedback_project_id
+      ON feedback(project_id);
+
+    -- Phase 7A: a user's opt-out of OPTIONAL product analytics. Never
+    -- consulted by mcp_audit_log or anything security-required - opting out
+    -- only stops product_events/feedback writes.
+    CREATE TABLE IF NOT EXISTS analytics_opt_out (
+      user_id TEXT PRIMARY KEY,
+      opted_out_at TEXT NOT NULL
+    );
   `);
 
   // mcp_audit_log predates Phase 5B - add the GitHub-specific columns via
