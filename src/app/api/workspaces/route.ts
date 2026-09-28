@@ -3,7 +3,7 @@ import { createProject } from "@/lib/workspaces/create";
 import { InvalidProjectNameError } from "@/lib/workspaces/sanitize";
 import { listProjects } from "@/lib/workspaces/store";
 import { trackEvent } from "@/lib/analytics/trackEvent";
-import { LOCAL_DEV_USER_ID } from "@/lib/identity";
+import { currentUserId } from "@/lib/identity";
 
 export async function GET() {
   const projects = await listProjects();
@@ -11,6 +11,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const userId = await currentUserId();
   let body: unknown;
   try {
     body = await request.json();
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
   try {
     const project = await createProject(name);
     trackEvent("project_created", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: userId,
       orgId: null,
       projectId: project.id,
       projectType: project.templateVersion,

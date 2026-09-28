@@ -6,7 +6,7 @@ import { isProviderAvailable } from "@/lib/workspaces/agent/availability";
 import { agentErrorResponse, assertProjectExists } from "@/lib/workspaces/agent/routeHelpers";
 import { createRun, PROVIDERS } from "@/lib/workspaces/agent/runStore";
 import { trackEvent } from "@/lib/analytics/trackEvent";
-import { LOCAL_DEV_USER_ID } from "@/lib/identity";
+import { currentUserId } from "@/lib/identity";
 
 const bodySchema = z.object({
   request: z.string().trim().min(1, "Describe the change you want.").max(2000),
@@ -14,6 +14,7 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const userId = await currentUserId();
   const { id } = await params;
 
   let body: unknown;
@@ -37,10 +38,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const workspaceRoot = await assertProjectExists(id);
     const runId = randomUUID();
-    const run = createRun(runId, id, parsed.data.request, parsed.data.provider);
-    trackEvent("agent_selected", { userId: LOCAL_DEV_USER_ID, orgId: null, projectId: id, provider: parsed.data.provider });
+    const run = createRun(runId, id, parsed.data.request, parsed.data.provider, userId);
+    trackEvent("agent_selected", { userId: userId, orgId: null, projectId: id, provider: parsed.data.provider });
     trackEvent("agent_run_started", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: userId,
       orgId: null,
       projectId: id,
       agentRunId: runId,

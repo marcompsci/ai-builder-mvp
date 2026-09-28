@@ -6,7 +6,6 @@ import { extractPlanFromText } from "./planSchema";
 import { runValidation } from "./validate";
 import type { Provider } from "./types";
 import { trackEvent } from "../../analytics/trackEvent";
-import { LOCAL_DEV_USER_ID } from "../../identity";
 
 function secondsSince(iso: string): number {
   return (Date.now() - new Date(iso).getTime()) / 1000;
@@ -33,7 +32,7 @@ export async function runPlanPipeline(
   const trackFailed = (errorCategory: "invalid_plan" | "provider_error") =>
     run &&
     trackEvent("agent_run_failed", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: run.userId,
       orgId: null,
       projectId: run.projectId,
       agentRunId: runId,
@@ -50,7 +49,7 @@ export async function runPlanPipeline(
       emit(runId, "run_cancelled", { at: "plan" });
       if (run) {
         trackEvent("agent_run_cancelled", {
-          userId: LOCAL_DEV_USER_ID,
+          userId: run.userId,
           orgId: null,
           projectId: run.projectId,
           agentRunId: runId,
@@ -96,7 +95,7 @@ export async function runApplyPipeline(
 
   const trackFailed = (errorCategory: "install_failed" | "validation_failed" | "provider_error") =>
     trackEvent("agent_run_failed", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: run.userId,
       orgId: null,
       projectId: run.projectId,
       agentRunId: runId,
@@ -126,7 +125,7 @@ export async function runApplyPipeline(
     updateRun(runId, { phase: "cancelled" });
     emit(runId, "run_cancelled", { at: "apply", rolledBackTo: checkpointSha });
     trackEvent("agent_run_cancelled", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: run.userId,
       orgId: null,
       projectId: run.projectId,
       agentRunId: runId,
@@ -163,7 +162,7 @@ export async function runApplyPipeline(
 
   const allPassed = validation.every((v) => v.passed);
   const validationEvent = {
-    userId: LOCAL_DEV_USER_ID,
+    userId: run.userId,
     orgId: null,
     projectId: run.projectId,
     agentRunId: runId,
@@ -193,7 +192,7 @@ export async function runApplyPipeline(
   updateRun(runId, { phase: "complete", commitSha });
   emit(runId, "run_completed", { commitSha });
   trackEvent("agent_run_completed", {
-    userId: LOCAL_DEV_USER_ID,
+    userId: run.userId,
     orgId: null,
     projectId: run.projectId,
     agentRunId: runId,

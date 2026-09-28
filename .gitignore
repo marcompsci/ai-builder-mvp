@@ -48,3 +48,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Azure deployment settings (names + repo, but keep it local)
+/infra/azure.env

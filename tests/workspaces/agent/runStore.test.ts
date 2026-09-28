@@ -12,7 +12,7 @@ import {
 describe("runStore - provider-neutral run lifecycle", () => {
   for (const provider of PROVIDERS) {
     it(`records the provider on creation (${provider})`, () => {
-      const run = createRun(`run-${provider}-1`, "prj_aaaaaaaa-x", "do something", provider);
+      const run = createRun(`run-${provider}-1`, "prj_aaaaaaaa-x", "do something", provider, "local-dev-user");
       expect(run.provider).toBe(provider);
       expect(run.phase).toBe("planning");
     });
@@ -23,7 +23,7 @@ describe("runStore - provider-neutral run lifecycle", () => {
   });
 
   it("requestCancel sets cancelRequested and is visible on the public run object", () => {
-    const run = createRun("run-cancel-1", "prj_aaaaaaaa-x", "do something", "claude-code");
+    const run = createRun("run-cancel-1", "prj_aaaaaaaa-x", "do something", "claude-code", "local-dev-user");
     expect(run.cancelRequested).toBe(false);
     requestCancel(run.id);
     expect(getRun(run.id)?.cancelRequested).toBe(true);
@@ -35,7 +35,7 @@ describe("runStore - provider-neutral run lifecycle", () => {
   });
 
   it("updateRun records a failure state (phase + error) correctly", () => {
-    const run = createRun("run-fail-1", "prj_aaaaaaaa-x", "do something", "codex");
+    const run = createRun("run-fail-1", "prj_aaaaaaaa-x", "do something", "codex", "local-dev-user");
     updateRun(run.id, { phase: "failed", error: "Validation failed." });
     const updated = getRun(run.id);
     expect(updated?.phase).toBe("failed");
@@ -43,13 +43,13 @@ describe("runStore - provider-neutral run lifecycle", () => {
   });
 
   it("updateRun records a cancelled state correctly", () => {
-    const run = createRun("run-cancelled-1", "prj_aaaaaaaa-x", "do something", "codex");
+    const run = createRun("run-cancelled-1", "prj_aaaaaaaa-x", "do something", "codex", "local-dev-user");
     updateRun(run.id, { phase: "cancelled" });
     expect(getRun(run.id)?.phase).toBe("cancelled");
   });
 
   it("emit() appends to the run's event log and is retrievable via getRunEvents", () => {
-    const run = createRun("run-events-1", "prj_aaaaaaaa-x", "do something", "claude-code");
+    const run = createRun("run-events-1", "prj_aaaaaaaa-x", "do something", "claude-code", "local-dev-user");
     emit(run.id, "run_started", { phase: "plan" });
     emit(run.id, "run_completed", { commitSha: "abc123" });
     const events = getRunEvents(run.id);
@@ -57,8 +57,8 @@ describe("runStore - provider-neutral run lifecycle", () => {
   });
 
   it("subscribers never receive events for a run that isn't theirs (per-run isolation)", () => {
-    const runA = createRun("run-iso-a", "prj_aaaaaaaa-x", "a", "claude-code");
-    const runB = createRun("run-iso-b", "prj_aaaaaaaa-x", "b", "codex");
+    const runA = createRun("run-iso-a", "prj_aaaaaaaa-x", "a", "claude-code", "local-dev-user");
+    const runB = createRun("run-iso-b", "prj_aaaaaaaa-x", "b", "codex", "local-dev-user");
     emit(runA.id, "run_started", {});
     emit(runB.id, "run_started", {});
     expect(getRunEvents(runA.id)).toHaveLength(1);

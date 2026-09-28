@@ -30,6 +30,9 @@ export interface ValidationCommandResult {
 export interface AgentRun {
   id: string;
   projectId: string;
+  /** Who started this run. Background pipeline code has no request to
+   *  read headers from, so identity is captured here at creation. */
+  userId: string;
   provider: Provider;
   phase: RunPhase;
   request: string;
@@ -52,11 +55,18 @@ interface InternalRun extends AgentRun {
 
 const runs = new Map<string, InternalRun>();
 
-export function createRun(id: string, projectId: string, request: string, provider: Provider): AgentRun {
+export function createRun(
+  id: string,
+  projectId: string,
+  request: string,
+  provider: Provider,
+  userId: string,
+): AgentRun {
   const now = new Date().toISOString();
   const run: InternalRun = {
     id,
     projectId,
+    userId,
     provider,
     phase: "planning",
     request,
@@ -81,6 +91,7 @@ function toPublic(run: InternalRun): AgentRun {
   return {
     id: run.id,
     projectId: run.projectId,
+    userId: run.userId,
     provider: run.provider,
     phase: run.phase,
     request: run.request,

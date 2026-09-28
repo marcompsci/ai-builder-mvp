@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { isAdmin } from "@/lib/identity";
 import { getFunnelSnapshot } from "@/lib/analytics/funnel";
 
-// No dedicated admin-auth layer exists yet (that's Phase 6 scope, not
-// this one) - this route carries the same trust assumption the rest of
-// the app already has today (single trusted operator), not a new gap.
-// See docs/analytics.md.
+// Gated by isAdmin(): open on localhost, ADMIN_USER_IDS-only once a
+// trusted auth proxy is in front (see src/lib/identity.ts and
+// docs/azure-deployment.md). See docs/analytics.md.
 export async function GET() {
+  // Admin surfaces expose other testers' free-text feedback; gate them.
+  if (!(await isAdmin())) {
+    return NextResponse.json({ error: "Not authorized." }, { status: 403 });
+  }
   return NextResponse.json({ funnel: getFunnelSnapshot() });
 }

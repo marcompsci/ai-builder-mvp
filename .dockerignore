@@ -1,0 +1,15 @@
+# Never ship local state or secrets into the image.
+node_modules
+.next
+.git
+data
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+coverage
+.DS_Store
+.claude
+.serena
+.impeccable
+npm-debug.log*

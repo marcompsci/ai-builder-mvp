@@ -21,7 +21,10 @@ function ensureColumn(database: Database.Database, table: string, column: string
 export function getDb(): Database.Database {
   if (db) return db;
   db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
+  // WAL needs mmap'd shared memory, which SMB file shares (Azure Files) do
+  // not provide. Overridable so cloud deployments can set DELETE; local dev
+  // is unchanged.
+  db.pragma(`journal_mode = ${process.env.SQLITE_JOURNAL_MODE || "WAL"}`);
   db.exec(`
     CREATE TABLE IF NOT EXISTS github_connections (
       id TEXT PRIMARY KEY,

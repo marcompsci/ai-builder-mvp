@@ -4,7 +4,6 @@ import net from "node:net";
 import path from "node:path";
 import { getProjectRoot } from "./paths";
 import { trackEvent } from "../analytics/trackEvent";
-import { LOCAL_DEV_USER_ID } from "../identity";
 
 export type PreviewStatus = "installing" | "starting" | "ready" | "error";
 
@@ -75,7 +74,12 @@ async function waitUntilResponding(port: number, timeoutMs = 45000): Promise<voi
   throw new Error("Timed out waiting for the preview server to start");
 }
 
-async function runPreviewLifecycle(id: string, projectRoot: string, state: InternalPreviewState) {
+async function runPreviewLifecycle(
+  id: string,
+  projectRoot: string,
+  state: InternalPreviewState,
+  userId: string,
+) {
   const requestedAt = Date.now();
   try {
     const nodeModulesPath = path.join(projectRoot, "node_modules");
@@ -107,7 +111,7 @@ async function runPreviewLifecycle(id: string, projectRoot: string, state: Inter
     state.status = "ready";
     state.url = `http://localhost:${port}`;
     trackEvent("preview_started", {
-      userId: LOCAL_DEV_USER_ID,
+      userId,
       orgId: null,
       projectId: id,
       durationToStartSeconds: (Date.now() - requestedAt) / 1000,
@@ -126,7 +130,7 @@ async function runPreviewLifecycle(id: string, projectRoot: string, state: Inter
  * install/start work continues in the background, and callers should poll
  * getPreviewStatus() until status is "ready" or "error".
  */
-export function ensurePreviewStarted(id: string): PreviewState {
+export function ensurePreviewStarted(id: string, userId: string): PreviewState {
   const existing = registry.get(id);
   if (existing) return toPublicState(existing);
 
@@ -134,7 +138,7 @@ export function ensurePreviewStarted(id: string): PreviewState {
 
   const state: InternalPreviewState = { status: "installing" };
   registry.set(id, state);
-  void runPreviewLifecycle(id, projectRoot, state);
+  void runPreviewLifecycle(id, projectRoot, state, userId);
 
   return toPublicState(state);
 }

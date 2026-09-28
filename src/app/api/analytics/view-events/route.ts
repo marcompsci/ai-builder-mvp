@@ -4,7 +4,7 @@ import { CLIENT_VIEW_EVENT_NAMES } from "@/lib/analytics/events";
 import { EVENT_PROPERTY_SCHEMAS } from "@/lib/analytics/schema";
 import { trackEvent } from "@/lib/analytics/trackEvent";
 import { checkRateLimit, RateLimitError } from "@/lib/analytics/rateLimit";
-import { LOCAL_DEV_USER_ID } from "@/lib/identity";
+import { currentUserId } from "@/lib/identity";
 
 // The ONLY analytics endpoint reachable directly from the browser with a
 // caller-supplied event name - deliberately restricted to a small fixed
@@ -21,8 +21,9 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const userId = await currentUserId();
   try {
-    checkRateLimit(`view-events:${LOCAL_DEV_USER_ID}`, 120);
+    checkRateLimit(`view-events:${userId}`, 120);
   } catch (err) {
     return NextResponse.json({ error: err instanceof RateLimitError ? err.message : "Rate limited." }, { status: 429 });
   }
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
 
   const { eventName, ...rest } = parsed.data;
   const schema = EVENT_PROPERTY_SCHEMAS[eventName];
-  const props = schema.strip().safeParse({ userId: LOCAL_DEV_USER_ID, orgId: null, ...rest });
+  const props = schema.strip().safeParse({ userId: userId, orgId: null, ...rest });
   if (!props.success) {
     // Still 2xx-safe to no-op rather than error - a client view beacon
     // should never block the UI it's instrumenting.

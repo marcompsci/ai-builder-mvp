@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createFeedback } from "@/lib/feedback";
 import { trackEvent } from "@/lib/analytics/trackEvent";
 import { checkRateLimit, RateLimitError } from "@/lib/analytics/rateLimit";
-import { LOCAL_DEV_USER_ID } from "@/lib/identity";
+import { currentUserId } from "@/lib/identity";
 import { assertProjectExists } from "@/lib/workspaces/agent/routeHelpers";
 import { workspaceErrorResponse } from "@/lib/workspaces/httpErrors";
 
@@ -28,10 +28,11 @@ const failureSchema = z.object({
 const bodySchema = z.discriminatedUnion("kind", [successSchema, failureSchema]);
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const userId = await currentUserId();
   const { id } = await params;
 
   try {
-    checkRateLimit(`feedback:${LOCAL_DEV_USER_ID}`, 20);
+    checkRateLimit(`feedback:${userId}`, 20);
   } catch (err) {
     return NextResponse.json({ error: err instanceof RateLimitError ? err.message : "Rate limited." }, { status: 429 });
   }
@@ -54,7 +55,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const entry = createFeedback({
       runId: input.runId ?? null,
       projectId: id,
-      userId: LOCAL_DEV_USER_ID,
+      userId: userId,
       kind: input.kind,
       rating: input.kind === "post_run_success" ? (input.rating ?? null) : null,
       helped: input.kind === "post_run_success" ? (input.helped ?? null) : null,
@@ -66,7 +67,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
 
     trackEvent("feedback_submitted", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: userId,
       orgId: null,
       projectId: id,
       agentRunId: input.runId ?? null,

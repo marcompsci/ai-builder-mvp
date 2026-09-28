@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { getAdapter } from "@/lib/workspaces/agent/adapters/registry";
 import { agentErrorResponse, assertProjectExists, loadOwnedRun } from "@/lib/workspaces/agent/routeHelpers";
 import { trackEvent } from "@/lib/analytics/trackEvent";
-import { LOCAL_DEV_USER_ID } from "@/lib/identity";
+import { currentUserId } from "@/lib/identity";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string; runId: string }> }) {
+  const userId = await currentUserId();
   const { id, runId } = await params;
   try {
     const workspaceRoot = await assertProjectExists(id);
@@ -15,7 +16,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     }
 
     trackEvent("agent_plan_approved", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: userId,
       orgId: null,
       projectId: id,
       agentRunId: runId,
@@ -23,7 +24,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       durationSeconds: (Date.now() - new Date(run.updatedAt).getTime()) / 1000,
     });
     trackEvent("agent_run_started", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: userId,
       orgId: null,
       projectId: id,
       agentRunId: runId,

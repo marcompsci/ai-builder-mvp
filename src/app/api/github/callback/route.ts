@@ -3,9 +3,10 @@ import { getAppOctokit, GitHubConfigError } from "@/lib/github/appAuth";
 import { saveConnection } from "@/lib/github/connections";
 import { InvalidStateError, verifyState } from "@/lib/github/state";
 import { trackEvent } from "@/lib/analytics/trackEvent";
-import { LOCAL_DEV_USER_ID } from "@/lib/identity";
+import { currentUserId } from "@/lib/identity";
 
 export async function GET(request: Request) {
+  const userId = await currentUserId();
   const url = new URL(request.url);
   const installationId = url.searchParams.get("installation_id");
   const state = url.searchParams.get("state");
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
       installationAccountType: accountType ?? null,
     });
     trackEvent("github_connected", {
-      userId: LOCAL_DEV_USER_ID,
+      userId: userId,
       orgId: null,
       projectId,
       installationAccountType: accountType === "Organization" ? "organization" : "personal",

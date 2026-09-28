@@ -6,9 +6,10 @@ import { GitHubConfigError } from "@/lib/github/appAuth";
 import { assertProjectExists } from "@/lib/workspaces/agent/routeHelpers";
 import { workspaceErrorResponse } from "@/lib/workspaces/httpErrors";
 import { trackEvent } from "@/lib/analytics/trackEvent";
-import { LOCAL_DEV_USER_ID } from "@/lib/identity";
+import { currentUserId } from "@/lib/identity";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const userId = await currentUserId();
   const { id } = await params;
 
   let body: unknown;
@@ -44,7 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       mode: input.mode,
     });
 
-    trackEvent("github_export_started", { userId: LOCAL_DEV_USER_ID, orgId: null, projectId: id, mode: input.mode });
+    trackEvent("github_export_started", { userId: userId, orgId: null, projectId: id, mode: input.mode });
 
     void (async () => {
       updateExport(exportRecord.id, { status: "pushing" });
@@ -64,14 +65,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           commitSha: result.commitSha,
           completedAt: new Date().toISOString(),
         });
-        trackEvent("github_export_completed", { userId: LOCAL_DEV_USER_ID, orgId: null, projectId: id, mode: input.mode, success: true });
+        trackEvent("github_export_completed", { userId: userId, orgId: null, projectId: id, mode: input.mode, success: true });
       } catch (err) {
         updateExport(exportRecord.id, {
           status: "failed",
           errorMessage: err instanceof GitHubPushError ? err.message : "Export failed.",
           completedAt: new Date().toISOString(),
         });
-        trackEvent("github_export_completed", { userId: LOCAL_DEV_USER_ID, orgId: null, projectId: id, mode: input.mode, success: false });
+        trackEvent("github_export_completed", { userId: userId, orgId: null, projectId: id, mode: input.mode, success: false });
       }
     })();
 

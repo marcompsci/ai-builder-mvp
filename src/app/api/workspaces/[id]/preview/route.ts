@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { workspaceErrorResponse } from "@/lib/workspaces/httpErrors";
 import { getProjectRoot, WorkspaceNotFoundError } from "@/lib/workspaces/paths";
 import { ensurePreviewStarted, getPreviewStatus } from "@/lib/workspaces/preview";
+import { currentUserId } from "@/lib/identity";
 
 async function assertProjectExists(id: string) {
   const root = getProjectRoot(id); // throws WorkspacePathError if id is malformed
@@ -17,7 +18,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     await assertProjectExists(id);
-    const status = ensurePreviewStarted(id);
+    const status = ensurePreviewStarted(id, await currentUserId());
     return NextResponse.json(status);
   } catch (err) {
     return workspaceErrorResponse(err);
